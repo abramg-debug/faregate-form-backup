@@ -122,14 +122,14 @@
     <div class="photoRow">
       <label>Photo 1 (optional)
         <input type="file" id="photo1" accept="image/*">
-        <div class="hint">Optional. Keep under ~15MB.</div>
+        <div class="hint">Keep under ~15MB.</div>
         <div id="photoHint1" class="tiny"></div>
       </label>
 
 
       <label>Photo 2 (optional)
         <input type="file" id="photo2" accept="image/*">
-        <div class="hint">Optional. Keep under ~15MB.</div>
+        <div class="hint">Keep under ~15MB.</div>
         <div id="photoHint2" class="tiny"></div>
       </label>
     </div>
@@ -519,7 +519,7 @@
   if (!file) return null;
 
   const MAX_UPLOAD = 15 * 1024 * 1024; // Apps Script limit
-  const RESIZE_THRESHOLD = 5 * 1024 * 1024; // compress only if over 5MB
+  const RESIZE_THRESHOLD = 3 * 1024 * 1024; // compress only if over 5MB
 
   if (file.size > MAX_UPLOAD) {
     throw new Error("Photo too large. Please choose an image under 15MB.");
@@ -562,7 +562,7 @@
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0, width, height);
 
-  const QUALITY = 0.8;
+  const QUALITY = 0.85;
 
   const dataUrl = canvas.toDataURL("image/jpeg", QUALITY);
 
@@ -654,6 +654,7 @@
   </script>
 </body>
 </html>
+
 
 
 
