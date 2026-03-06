@@ -129,7 +129,7 @@
 
       <label>Photo 2 (optional)
         <input type="file" id="photo2" accept="image/*">
-        <div class="hint">Optional. Keep under ~8MB.</div>
+        <div class="hint">Optional. Keep under ~15MB.</div>
         <div id="photoHint2" class="tiny"></div>
       </label>
     </div>
@@ -518,11 +518,11 @@
   const file = inputEl.files && inputEl.files[0];
   if (!file) return null;
 
-  const MAX_UPLOAD = 12 * 1024 * 1024; // Apps Script limit
+  const MAX_UPLOAD = 15 * 1024 * 1024; // Apps Script limit
   const RESIZE_THRESHOLD = 5 * 1024 * 1024; // compress only if over 5MB
 
   if (file.size > MAX_UPLOAD) {
-    throw new Error("Photo too large. Please choose an image under 8MB.");
+    throw new Error("Photo too large. Please choose an image under 15MB.");
   }
 
   // If under threshold, send original file
@@ -654,4 +654,5 @@
   </script>
 </body>
 </html>
+
 
