@@ -515,12 +515,63 @@
 
 
     async function packPhoto(inputEl){
-      const f = inputEl.files && inputEl.files[0];
-      if (!f) return null;
-      if (f.size > 8 * 1024 * 1024) throw new Error("Photo too large. Please choose an image under 8MB.");
-      const dataUrl = await readFileAsDataURL(f);
-      return { name: f.name, type: f.type, dataUrl };
-    }
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return null;
+
+  const MAX_UPLOAD = 12 * 1024 * 1024; // Apps Script limit
+  const RESIZE_THRESHOLD = 5 * 1024 * 1024; // compress only if over 5MB
+
+  if (file.size > MAX_UPLOAD) {
+    throw new Error("Photo too large. Please choose an image under 8MB.");
+  }
+
+  // If under threshold, send original file
+  if (file.size <= RESIZE_THRESHOLD) {
+    const dataUrl = await readFileAsDataURL(file);
+    return { name: file.name, type: file.type, dataUrl };
+  }
+
+  // --- Resize / compress ---
+  const img = await new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const image = new Image();
+      image.onload = ()=>resolve(image);
+      image.onerror = reject;
+      image.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const MAX_DIM = 1600; // max width or height
+  let { width, height } = img;
+
+  if (width > height && width > MAX_DIM) {
+    height = Math.round(height * (MAX_DIM / width));
+    width = MAX_DIM;
+  } else if (height > MAX_DIM) {
+    width = Math.round(width * (MAX_DIM / height));
+    height = MAX_DIM;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const QUALITY = 0.8;
+
+  const dataUrl = canvas.toDataURL("image/jpeg", QUALITY);
+
+  return {
+    name: file.name.replace(/\.[^.]+$/, ".jpg"),
+    type: "image/jpeg",
+    dataUrl
+  };
+}
 
 
     form.addEventListener("submit", async (e) => {
@@ -603,3 +654,4 @@
   </script>
 </body>
 </html>
+
