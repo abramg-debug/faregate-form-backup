@@ -1,0 +1,605 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LACMTA Faregate Service Request</title>
+  <style>
+    body{font-family:system-ui;margin:24px;max-width:900px}
+    label{display:block;margin-top:12px;font-weight:600}
+    input,select,textarea{width:100%;padding:10px;margin-top:6px;box-sizing:border-box}
+    button{margin-top:16px;padding:10px 14px}
+    .ok{padding:12px;background:#e7ffe7;margin-top:16px}
+    .err{padding:12px;background:#ffe7e7;margin-top:16px}
+    .warn{padding:10px;background:#ffecec;border:1px solid #ffb3b3;margin-top:10px;color:#7a0000;white-space:pre-wrap}
+    .hint{font-size:12px;opacity:.75;margin-top:6px}
+    .tiny{font-size:12px;opacity:.75;margin-top:10px;white-space:pre-wrap}
+    .row2{display:grid;grid-template-columns:140px 1fr 1fr;gap:12px;align-items:end;}
+    .row2 label{margin-top:12px}
+    @media (max-width:700px){ .row2{grid-template-columns:1fr} }
+    .pageTitle{text-align:center;margin:0 0 8px 0;font-size:22px;font-weight:800;letter-spacing:.2px;}
+    .hiddenField{display:none;}
+    .photoRow{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;}
+    @media (max-width:700px){ .photoRow{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <h2 class="pageTitle">LACMTA Faregate Service Request (backup)</h2>
+  <div id="loadStatus" class="tiny">Loading lists…</div>
+
+
+  <form id="f">
+    <input type="hidden" id="clientId" name="clientId">
+    <input type="hidden" name="ticketReceivedDateTime" id="ticketReceivedDateTime">
+    <input type="hidden" name="serviceType" id="serviceType" value="Corrective">
+    <input type="hidden" name="priority" id="priority" value="High">
+
+
+    <label>Site Name
+      <select name="siteName" id="siteName" required>
+        <option value="">Select…</option>
+      </select>
+    </label>
+
+
+    <label>FG #
+      <select name="fgNo" id="fgNo" required>
+        <option value="">Select…</option>
+      </select>
+      <div class="hint">Filtered automatically based on selected Site.</div>
+    </label>
+    <div id="fgWarn" class="warn" style="display:none;"></div>
+
+
+    <label>Site ID
+      <input name="siteId" id="siteId" required>
+      <div class="hint">Auto-filled from Site Name (editable if needed).</div>
+    </label>
+
+
+    <div class="row2">
+      <label>Line
+        <input name="line" id="line" readonly placeholder="Auto">
+      </label>
+      <label>Array
+        <input name="array" id="array" readonly placeholder="Auto-filled">
+      </label>
+      <label>Type
+        <input name="type" id="type" readonly placeholder="Auto-filled">
+      </label>
+    </div>
+
+
+    <div id="siteWarn" class="warn" style="display:none;"></div>
+
+
+    <label>Incident Date/Time
+      <input name="incidentDateTime" id="incidentDateTime">
+      <div class="hint">Auto-filled with current time; edit if needed.</div>
+    </label>
+
+
+    <label>Issue Type
+      <select name="issueType" id="issueType" required>
+        <option value="">Select and describe detail in Issues box</option>
+      </select>
+    </label>
+
+
+    <label>Issues
+      <textarea name="issues" id="issues" rows="4" placeholder="Describe Issue here"></textarea>
+    </label>
+    <div id="issuesWarn" class="warn" style="display:none;"></div>
+
+
+    <div class="hiddenField">
+      <label>Technician
+        <select name="technician" id="technician">
+          <option value="">Technician Not Assigned</option>
+        </select>
+      </label>
+    </div>
+
+
+    <label>Actions Taken
+      <textarea name="actionsTaken" id="actionsTaken" rows="3">Reported</textarea>
+    </label>
+
+
+    <label>Requested By
+      <select name="requestedBy" id="requestedBy" required>
+        <option value="">Author of this Form</option>
+      </select>
+    </label>
+
+
+    <label>Department
+      <select name="department" id="department" required>
+        <option value=''>Example "LA Metro" or Nexien HelpDesk</option>
+      </select>
+    </label>
+
+
+    <div class="photoRow">
+      <label>Photo 1 (optional)
+        <input type="file" id="photo1" accept="image/*">
+        <div class="hint">Optional. Keep under ~8MB.</div>
+        <div id="photoHint1" class="tiny"></div>
+      </label>
+
+
+      <label>Photo 2 (optional)
+        <input type="file" id="photo2" accept="image/*">
+        <div class="hint">Optional. Keep under ~8MB.</div>
+        <div id="photoHint2" class="tiny"></div>
+      </label>
+    </div>
+
+
+    <label style="font-weight:700; margin-top:16px;">
+      <input type="checkbox" id="sendCopy" name="sendCopy" value="yes" style="width:auto; margin-right:8px;">
+      Send me a copy
+    </label>
+
+
+    <div id="copyEmailWrap" style="display:none;">
+      <label>Email for copy
+        <input type="email" id="copyEmail" name="copyEmail" placeholder="name@example.com">
+        <div class="hint">If checked, we’ll send the same ticket notification to this email (no photo links).</div>
+      </label>
+    </div>
+
+
+    <button type="submit">Submit</button>
+  </form>
+
+
+  <div id="msg"></div>
+
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbwe1NzuFx6p4vQxFJkDZzGvZYLFe4zCaDuMq9Hs8NSSB4CeJaZMP4ivAiC15g8t2iVK5Q/exec";
+
+
+    const form = document.getElementById("f");
+    const msg = document.getElementById("msg");
+    const loadStatus = document.getElementById("loadStatus");
+
+
+    const clientIdEl = document.getElementById("clientId");
+
+
+    const siteNameEl = document.getElementById("siteName");
+    const siteIdEl   = document.getElementById("siteId");
+    const lineEl     = document.getElementById("line");
+    const arrayEl    = document.getElementById("array");
+    const typeEl     = document.getElementById("type");
+
+
+    const siteWarnEl = document.getElementById("siteWarn");
+    const ticketReceivedEl = document.getElementById("ticketReceivedDateTime");
+    const incidentEl = document.getElementById("incidentDateTime");
+
+
+    const fgEl = document.getElementById("fgNo");
+    const fgWarnEl = document.getElementById("fgWarn");
+
+
+    const issueTypeEl = document.getElementById("issueType");
+    const issuesEl = document.getElementById("issues");
+    const issuesWarnEl = document.getElementById("issuesWarn");
+
+
+    const techEl = document.getElementById("technician");
+    const requestedByEl = document.getElementById("requestedBy");
+    const departmentEl  = document.getElementById("department");
+    const actionsTakenEl = document.getElementById("actionsTaken");
+
+
+    const photo1El = document.getElementById("photo1");
+    const photo2El = document.getElementById("photo2");
+    const photoHint1El = document.getElementById("photoHint1");
+    const photoHint2El = document.getElementById("photoHint2");
+
+
+    const sendCopyEl = document.getElementById("sendCopy");
+    const copyEmailWrapEl = document.getElementById("copyEmailWrap");
+    const copyEmailEl = document.getElementById("copyEmail");
+
+
+    let SITES = [];
+    let byName = new Map();
+    let byId   = new Map();
+    let gatesBySiteId = {};
+    let currentFgSet = new Set();
+    let arrayBySiteAndFg = {};
+    let typeBySiteAndFg = {};
+    let LISTS = { issueTypes: [], technicians: [], requestedBys: [], departments: [] };
+
+
+    function clean(s){ return String(s||"").trim(); }
+
+
+    function makeClientId_(){
+      try {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+          return window.crypto.randomUUID();
+        }
+      } catch (e) {}
+      return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
+    }
+
+
+    function nowStamp(){
+      const d = new Date();
+      const MM = String(d.getMonth()+1).padStart(2,"0");
+      const DD = String(d.getDate()).padStart(2,"0");
+      const YY = String(d.getFullYear()).slice(-2);
+      const HH = String(d.getHours()).padStart(2,"0");
+      const mm = String(d.getMinutes()).padStart(2,"0");
+      return `${MM}/${DD}/${YY} ${HH}:${mm}`;
+    }
+
+
+    function showWarn(el, text){
+      if (!text) { el.style.display="none"; el.textContent=""; }
+      else { el.style.display="block"; el.textContent=text; }
+    }
+
+
+    function setSelectOptions(selectEl, items, firstOptionText){
+      const cur = selectEl.value;
+      selectEl.innerHTML = "";
+      const opt0 = document.createElement("option");
+      opt0.value = "";
+      opt0.textContent = firstOptionText || "Select…";
+      selectEl.appendChild(opt0);
+
+
+      items.forEach(v => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v;
+        selectEl.appendChild(o);
+      });
+
+
+      if (cur && items.includes(cur)) selectEl.value = cur;
+      else selectEl.value = "";
+    }
+
+
+    function validateSitePair(){
+      const name = clean(siteNameEl.value);
+      const id = clean(siteIdEl.value);
+
+
+      if (!name && !id) { showWarn(siteWarnEl, ""); return; }
+
+
+      const recFromName = byName.get(name);
+      const recFromId = byId.get(id);
+
+
+      if (name && !recFromName) { showWarn(siteWarnEl, `Site Name "${name}" is not recognized.`); return; }
+      if (id && !recFromId) { showWarn(siteWarnEl, `Site ID "${id}" is not recognized.`); return; }
+
+
+      if (name && id && recFromName && recFromId) {
+        if (clean(recFromName.id) !== id) {
+          showWarn(siteWarnEl, `Mismatch: "${name}" is Site ID ${recFromName.id}, but you entered ${id}.`);
+          return;
+        }
+      }
+      showWarn(siteWarnEl, "");
+    }
+
+
+    function refreshFgList(){
+      const siteId = clean(siteIdEl.value);
+      const list = Array.isArray(gatesBySiteId?.[siteId]) ? gatesBySiteId[siteId] : [];
+      currentFgSet = new Set(list);
+      setSelectOptions(fgEl, list, "Select…");
+      validateFgForSite();
+      refreshArrayAndType();
+    }
+
+
+    function validateFgForSite(){
+      const fg = clean(fgEl.value);
+      if (!fg) { showWarn(fgWarnEl, ""); return; }
+
+
+      const siteId = clean(siteIdEl.value);
+      const knownList = Array.isArray(gatesBySiteId?.[siteId]) ? gatesBySiteId[siteId] : [];
+
+
+      if (!siteId) { showWarn(fgWarnEl, `Choose a Site first to validate FG # "${fg}".`); return; }
+      if (knownList.length === 0) { showWarn(fgWarnEl, `No FG list found for Site ID ${siteId}. Check Gates tab.`); return; }
+      if (!currentFgSet.has(fg)) { showWarn(fgWarnEl, `FG # "${fg}" is not valid for Site ID ${siteId}.`); return; }
+
+
+      showWarn(fgWarnEl, "");
+    }
+
+
+    function refreshArrayAndType(){
+      const siteId = clean(siteIdEl.value);
+      const fg = clean(fgEl.value);
+
+
+      const arr = (arrayBySiteAndFg?.[siteId] && arrayBySiteAndFg[siteId][fg]) ? arrayBySiteAndFg[siteId][fg] : "";
+      const typ = (typeBySiteAndFg?.[siteId] && typeBySiteAndFg[siteId][fg]) ? typeBySiteAndFg[siteId][fg] : "";
+
+
+      arrayEl.value = arr || "";
+      typeEl.value = typ || "";
+    }
+
+
+    function updateIssuesRequirement(){
+      const issueType = clean(issueTypeEl.value).toLowerCase();
+      const needsIssues = (issueType === "other");
+      const hasIssues = !!issuesEl.value.trim();
+
+
+      if (needsIssues && !hasIssues) {
+        showWarn(issuesWarnEl, "Issues is required when Issue Type is 'Other'.");
+        issuesEl.style.borderColor = "#cc0000";
+      } else {
+        showWarn(issuesWarnEl, "");
+        issuesEl.style.borderColor = "";
+      }
+    }
+
+
+    function initTimestamps_(){
+      const stamp = nowStamp();
+      ticketReceivedEl.value = stamp;
+      incidentEl.value = stamp;
+    }
+
+
+    function readFileAsDataURL(file){
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("File read failed"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+
+    function bindPhotoHint(inputEl, hintEl){
+      inputEl.addEventListener("change", () => {
+        const f = inputEl.files && inputEl.files[0];
+        if (!f) { hintEl.textContent = ""; return; }
+        const mb = (f.size / (1024*1024)).toFixed(2);
+        hintEl.textContent = `Selected: ${f.name} (${mb} MB)`;
+      });
+    }
+    bindPhotoHint(photo1El, photoHint1El);
+    bindPhotoHint(photo2El, photoHint2El);
+
+
+    function updateCopyUI(){
+      const on = !!sendCopyEl.checked;
+      copyEmailWrapEl.style.display = on ? "block" : "none";
+      copyEmailEl.required = on;
+      if (!on) copyEmailEl.value = "";
+    }
+    sendCopyEl.addEventListener("change", updateCopyUI);
+
+
+    function initClientId(){
+      let cid = localStorage.getItem("fg_clientId");
+      if (!cid) {
+        cid = makeClientId_();
+        localStorage.setItem("fg_clientId", cid);
+      }
+      clientIdEl.value = cid;
+    }
+
+
+    async function apiGetFormData(){
+      const res = await fetch(`${API_URL}?api=formdata`, { method: "GET" });
+      if (!res.ok) throw new Error("Could not load form data.");
+      return await res.json();
+    }
+
+
+    async function apiSubmit(payload){
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ api: "submit", payload })
+      });
+      if (!res.ok) throw new Error("Submit request failed.");
+      return await res.json();
+    }
+
+
+    async function loadFormData(){
+      try {
+        const data = await apiGetFormData();
+
+
+        const sites = Array.isArray(data?.sites) ? data.sites : [];
+        const lists = data?.lists || {};
+        gatesBySiteId = data?.gatesBySiteId || {};
+        arrayBySiteAndFg = data?.arrayBySiteAndFg || {};
+        typeBySiteAndFg = data?.typeBySiteAndFg || {};
+
+
+        SITES = sites;
+        byName = new Map(SITES.map(x => [clean(x.name), { id: clean(x.id), line: clean(x.line) }]));
+        byId   = new Map(SITES.map(x => [clean(x.id), { name: clean(x.name), line: clean(x.line) }]));
+
+
+        setSelectOptions(siteNameEl, SITES.map(x => x.name).sort((a,b)=>a.localeCompare(b)), "Select…");
+
+
+        LISTS.issueTypes   = Array.isArray(lists.issueTypes) ? lists.issueTypes : [];
+        LISTS.technicians  = Array.isArray(lists.technicians) ? lists.technicians : [];
+        LISTS.requestedBys = Array.isArray(lists.requestedBys) ? lists.requestedBys : [];
+        LISTS.departments  = Array.isArray(lists.departments) ? lists.departments : [];
+
+
+        setSelectOptions(issueTypeEl, LISTS.issueTypes, "Select and describe detail in Issues box");
+        setSelectOptions(techEl, LISTS.technicians, "Technician Not Assigned");
+        techEl.value = "";
+
+
+        setSelectOptions(requestedByEl, LISTS.requestedBys, "Author of this Form");
+        setSelectOptions(departmentEl, LISTS.departments, 'Example "LA Metro" or Nexien HelpDesk');
+
+
+        if (!actionsTakenEl.value.trim()) actionsTakenEl.value = "Reported";
+
+
+        loadStatus.textContent = `Loaded ${SITES.length} sites, ${Object.keys(gatesBySiteId).length} gate-lists.`;
+
+
+        initClientId();
+        validateSitePair();
+        refreshFgList();
+        refreshArrayAndType();
+        updateIssuesRequirement();
+      } catch (err) {
+        loadStatus.textContent = "Error loading lists.";
+        msg.className = "err";
+        msg.textContent = String(err?.message || err);
+      }
+    }
+
+
+    siteNameEl.addEventListener("change", () => {
+      const name = clean(siteNameEl.value);
+      const rec = byName.get(name);
+      if (rec) {
+        siteIdEl.value = rec.id;
+        lineEl.value = rec.line || "";
+      }
+      validateSitePair();
+      refreshFgList();
+    });
+
+
+    siteIdEl.addEventListener("input", () => {
+      const id = clean(siteIdEl.value);
+      const rec = byId.get(id);
+      if (rec) {
+        siteNameEl.value = rec.name;
+        lineEl.value = rec.line || "";
+        validateSitePair();
+        refreshFgList();
+      } else {
+        validateSitePair();
+      }
+    });
+
+
+    fgEl.addEventListener("change", () => {
+      validateFgForSite();
+      refreshArrayAndType();
+    });
+
+
+    issueTypeEl.addEventListener("change", updateIssuesRequirement);
+    issuesEl.addEventListener("input", updateIssuesRequirement);
+
+
+    initTimestamps_();
+    if (!actionsTakenEl.value.trim()) actionsTakenEl.value = "Reported";
+    loadFormData();
+    updateCopyUI();
+
+
+    async function packPhoto(inputEl){
+      const f = inputEl.files && inputEl.files[0];
+      if (!f) return null;
+      if (f.size > 8 * 1024 * 1024) throw new Error("Photo too large. Please choose an image under 8MB.");
+      const dataUrl = await readFileAsDataURL(f);
+      return { name: f.name, type: f.type, dataUrl };
+    }
+
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+
+      updateIssuesRequirement();
+      if (clean(issueTypeEl.value).toLowerCase() === "other" && !issuesEl.value.trim()) {
+        msg.className = "err";
+        msg.textContent = "Please fill in Issues when Issue Type is 'Other'.";
+        return;
+      }
+      if (sendCopyEl.checked && !copyEmailEl.value.trim()) {
+        msg.className = "err";
+        msg.textContent = "Please enter your email to receive a copy.";
+        return;
+      }
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+
+
+      msg.className = "";
+      msg.textContent = "Submitting…";
+
+
+      const data = Object.fromEntries(new FormData(form).entries());
+      data.serviceType = "Corrective";
+      data.priority = "High";
+      data.sendCopy = sendCopyEl.checked ? "yes" : "";
+      data.copyEmail = copyEmailEl.value || "";
+
+
+      try {
+        data.photo1 = await packPhoto(photo1El);
+        data.photo2 = await packPhoto(photo2El);
+      } catch (err) {
+        msg.className = "err";
+        msg.textContent = String(err?.message || err);
+        return;
+      }
+
+
+      try {
+        const res = await apiSubmit(data);
+        if (res.ok) {
+          msg.className = "ok";
+          msg.textContent = `Submitted ✅ Ticket ${res.ticketId} created.` +
+            ((res.photoLink1 || res.photoLink2) ? " Photos saved." : "");
+
+
+          form.reset();
+          lineEl.value = "";
+          arrayEl.value = "";
+          typeEl.value = "";
+          setSelectOptions(fgEl, [], "Select…");
+          showWarn(siteWarnEl, "");
+          showWarn(fgWarnEl, "");
+          showWarn(issuesWarnEl, "");
+          photoHint1El.textContent = "";
+          photoHint2El.textContent = "";
+          sendCopyEl.checked = false;
+          copyEmailEl.value = "";
+          updateCopyUI();
+          initTimestamps_();
+          actionsTakenEl.value = "Reported";
+          issueTypeEl.value = "";
+          techEl.value = "";
+          requestedByEl.value = "";
+          departmentEl.value = "";
+          issuesEl.style.borderColor = "";
+          updateIssuesRequirement();
+        } else {
+          msg.className = "err";
+          msg.textContent = `Error: ${res.error}`;
+        }
+      } catch (err) {
+        msg.className = "err";
+        msg.textContent = String(err?.message || err);
+      }
+    });
+  </script>
+</body>
+</html>
