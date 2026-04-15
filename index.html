@@ -27,6 +27,15 @@
     .row4 label{margin-top:12px}
     @media (max-width:700px){ .row4{grid-template-columns:1fr} }
 
+    .fgLookupRow{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) minmax(240px, 320px);
+      gap:12px;
+      align-items:end;
+    }
+    .fgLookupRow label{margin-top:12px}
+    @media (max-width:700px){ .fgLookupRow{grid-template-columns:1fr} }
+
     input[readonly]{
       background:#f5f5f5;
       color:#555;
@@ -56,13 +65,29 @@
       </select>
     </label>
 
-    <label>FG #
-      <select name="fgNo" id="fgNo" required>
-        <option value="">Select…</option>
-      </select>
-      <div class="hint">Filtered automatically based on selected Station.</div>
-    </label>
-    <div id="fgWarn" class="warn" style="display:none;"></div>
+    <div class="fgLookupRow">
+      <label>FG #
+        <select name="fgNo" id="fgNo" required>
+          <option value="">Select…</option>
+        </select>
+        <div class="hint">Filtered automatically based on selected Station.</div>
+        <div id="fgWarn" class="warn" style="display:none;"></div>
+      </label>
+
+      <label>Quick Gate Lookup
+        <input
+          type="text"
+          id="quickGateLookup"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="6"
+          placeholder="Enter last 3 or 4 digits"
+          autocomplete="off"
+        >
+        <div class="hint">Type 3–4 digits like 505 to auto-fill Station and FG #.</div>
+        <div id="quickGateWarn" class="warn" style="display:none;"></div>
+      </label>
+    </div>
 
     <div class="row4">
       <label>Station ID
@@ -112,12 +137,6 @@
       </label>
     </div>
 
-    <!--
-    <label>Actions Taken
-      <textarea name="actionsTaken" id="actionsTaken" rows="3">Reported</textarea>
-    </label>
-    -->
-
     <label>Requested By
       <select name="requestedBy" id="requestedBy" required>
         <option value="">Author of this Form</option>
@@ -162,7 +181,6 @@
   <div id="msg"></div>
 
   <script>
-    // Replace this only if your Apps Script web app URL changes
     const API_URL = "https://script.google.com/macros/s/AKfycbxKKvgFHmSUGaFR4YABoYfi1UwMWheBabbACXyNQXaVQE7uOxv7awK-nEjRfqFw8qTB/exec";
 
     const form = document.getElementById("f");
@@ -184,6 +202,9 @@
 
     const fgEl = document.getElementById("fgNo");
     const fgWarnEl = document.getElementById("fgWarn");
+
+    const quickGateEl = document.getElementById("quickGateLookup");
+    const quickGateWarnEl = document.getElementById("quickGateWarn");
 
     const issueTypeEl = document.getElementById("issueType");
     const issuesEl = document.getElementById("issues");
@@ -211,9 +232,11 @@
     let currentFgSet = new Set();
     let arrayBySiteAndFg = {};
     let typeBySiteAndFg = {};
+    let gateRecords = [];
     let LISTS = { issueTypes: [], technicians: [], requestedBys: [], departments: [] };
 
     function clean(s){ return String(s || "").trim(); }
+    function digitsOnly(s){ return String(s || "").replace(/\D+/g, ""); }
 
     function makeClientId_(){
       try {
@@ -262,6 +285,45 @@
 
       if (cur && items.includes(cur)) selectEl.value = cur;
       else selectEl.value = "";
+    }
+
+    function buildGateRecordsFromMaps(){
+      const siteMetaById = new Map(
+        SITES.map(x => [clean(x.id), { siteName: clean(x.name), line: clean(x.line) }])
+      );
+
+      const out = [];
+      const seen = new Set();
+
+      Object.keys(gatesBySiteId || {}).forEach(siteIdRaw => {
+        const siteId = clean(siteIdRaw);
+        const siteMeta = siteMetaById.get(siteId) || { siteName: "", line: "" };
+        const fgList = Array.isArray(gatesBySiteId[siteId]) ? gatesBySiteId[siteId] : [];
+
+        fgList.forEach(fgRaw => {
+          const fgNo = clean(fgRaw);
+          if (!fgNo) return;
+
+          const key = `${siteId}||${fgNo}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+
+          const arr = (arrayBySiteAndFg?.[siteId] && arrayBySiteAndFg[siteId][fgNo]) ? arrayBySiteAndFg[siteId][fgNo] : "";
+          const typ = (typeBySiteAndFg?.[siteId] && typeBySiteAndFg[siteId][fgNo]) ? typeBySiteAndFg[siteId][fgNo] : "";
+
+          out.push({
+            siteId,
+            siteName: siteMeta.siteName,
+            line: siteMeta.line,
+            fgNo,
+            fgDigits: digitsOnly(fgNo),
+            array: arr || "",
+            type: typ || ""
+          });
+        });
+      });
+
+      return out;
     }
 
     function validateSitePair(){
@@ -417,6 +479,90 @@
       return await res.json();
     }
 
+    function findQuickGateMatches(queryDigits){
+      const exact = gateRecords.filter(r => r.fgDigits === queryDigits);
+      if (exact.length === 1) {
+        return { status: "unique", record: exact[0] };
+      }
+      if (exact.length > 1) {
+        return { status: "multiple", exact: true, matches: exact };
+      }
+
+      const suffix = gateRecords.filter(r => r.fgDigits.endsWith(queryDigits));
+      if (suffix.length === 1) {
+        return { status: "unique", record: suffix[0] };
+      }
+      if (suffix.length > 1) {
+        return { status: "multiple", exact: false, matches: suffix };
+      }
+
+      return { status: "none", matches: [] };
+    }
+
+    function applyGateRecord(record){
+      if (!record) return;
+
+      siteIdEl.value = record.siteId || "";
+      siteNameEl.value = record.siteName || "";
+      lineEl.value = record.line || "";
+
+      validateSitePair();
+      refreshFgList();
+
+      fgEl.value = record.fgNo || "";
+      validateFgForSite();
+      refreshArrayAndType();
+
+      showWarn(quickGateWarnEl, "");
+    }
+
+    function validateQuickGateValue(showShortWarning){
+      const raw = clean(quickGateEl.value);
+
+      if (!raw) {
+        showWarn(quickGateWarnEl, "");
+        return "";
+      }
+
+      const digits = digitsOnly(raw);
+
+      if (raw !== digits) {
+        showWarn(quickGateWarnEl, "Quick Gate Lookup must be numbers only.");
+        return null;
+      }
+
+      if (digits.length < 3) {
+        showWarn(quickGateWarnEl, showShortWarning ? "Enter at least 3 digits." : "");
+        return null;
+      }
+
+      showWarn(quickGateWarnEl, "");
+      return digits;
+    }
+
+    function runQuickGateLookup(showShortWarning = true){
+      const digits = validateQuickGateValue(showShortWarning);
+      if (digits === "") return;
+      if (!digits) return;
+
+      const result = findQuickGateMatches(digits);
+
+      if (result.status === "unique") {
+        applyGateRecord(result.record);
+        return;
+      }
+
+      if (result.status === "multiple") {
+        showWarn(
+          quickGateWarnEl,
+          `More than one gate ends in "${digits}". Enter 4 digits instead.`
+        );
+        return;
+      }
+
+      showWarn(quickGateWarnEl, `No gate ending in "${digits}" was found.`);
+    }
+
     async function loadFormData(){
       try {
         const data = await apiGetFormData();
@@ -433,6 +579,18 @@
         byName = new Map(SITES.map(x => [clean(x.name), { id: clean(x.id), line: clean(x.line) }]));
         byId   = new Map(SITES.map(x => [clean(x.id), { name: clean(x.name), line: clean(x.line) }]));
 
+        gateRecords = Array.isArray(data?.gateRecords) && data.gateRecords.length
+          ? data.gateRecords.map(r => ({
+              siteId: clean(r.siteId),
+              siteName: clean(r.siteName),
+              line: clean(r.line),
+              fgNo: clean(r.fgNo),
+              fgDigits: digitsOnly(r.fgNo),
+              array: clean(r.array),
+              type: clean(r.type)
+            }))
+          : buildGateRecordsFromMaps();
+
         setSelectOptions(siteNameEl, SITES.map(x => x.name).sort((a, b) => a.localeCompare(b)), "Select…");
 
         LISTS.issueTypes   = Array.isArray(lists.issueTypes) ? lists.issueTypes : [];
@@ -447,7 +605,8 @@
         setSelectOptions(requestedByEl, LISTS.requestedBys, "Author of this Form");
         setSelectOptions(departmentEl, LISTS.departments, 'Example "LA Metro" or Nexien HelpDesk');
 
-        loadStatus.textContent = `Loaded ${SITES.length} stations, ${Object.keys(gatesBySiteId).length} gate-lists.`;
+        loadStatus.textContent =
+          `Loaded ${SITES.length} stations, ${Object.keys(gatesBySiteId).length} gate-lists, ${gateRecords.length} gates.`;
 
         initClientId();
         validateSitePair();
@@ -468,6 +627,7 @@
         siteIdEl.value = rec.id;
         lineEl.value = rec.line || "";
       }
+      showWarn(quickGateWarnEl, "");
       validateSitePair();
       refreshFgList();
     });
@@ -478,6 +638,7 @@
       if (rec) {
         siteNameEl.value = rec.name;
         lineEl.value = rec.line || "";
+        showWarn(quickGateWarnEl, "");
         validateSitePair();
         refreshFgList();
       } else {
@@ -486,8 +647,37 @@
     });
 
     fgEl.addEventListener("change", () => {
+      showWarn(quickGateWarnEl, "");
       validateFgForSite();
       refreshArrayAndType();
+    });
+
+    quickGateEl.addEventListener("input", () => {
+      const raw = clean(quickGateEl.value);
+      if (!raw) {
+        showWarn(quickGateWarnEl, "");
+        return;
+      }
+
+      const digits = digitsOnly(raw);
+      if (raw !== digits) {
+        showWarn(quickGateWarnEl, "Quick Gate Lookup must be numbers only.");
+        return;
+      }
+
+      if (digits.length >= 3) {
+        runQuickGateLookup(false);
+      } else {
+        showWarn(quickGateWarnEl, "");
+      }
+    });
+
+    quickGateEl.addEventListener("change", () => runQuickGateLookup(true));
+    quickGateEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runQuickGateLookup(true);
+      }
     });
 
     issueTypeEl.addEventListener("change", updateIssuesRequirement);
@@ -609,6 +799,7 @@
         form.reset();
         initTimestamps_();
         updateCopyUI();
+        showWarn(quickGateWarnEl, "");
         await loadFormData();
       } catch (err) {
         msg.className = "err";
